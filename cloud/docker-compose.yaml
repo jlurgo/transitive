@@ -17,6 +17,8 @@ x-cloud: &shared_cloud
       condition: service_started
     ensure_certs:
       condition: service_completed_successfully
+    clickhouse:
+      condition: service_healthy
   env_file:
     - .env
   ports:
@@ -216,6 +218,13 @@ services:
     restart: always
     networks:
       - default
+      - caps
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     deploy:
       resources:
         limits:
@@ -236,12 +245,12 @@ services:
       OPAMP_PORT: 4320
       OTEL_SERVICE_NAME: 'hdx-oss-api'
       USAGE_STATS_ENABLED: ${USAGE_STATS_ENABLED:-true}
-      DEFAULT_CONNECTIONS: '[{"name":"Local ClickHouse","host":"http://clickhouse:8123","username":"default","password":""}]'
+      DEFAULT_CONNECTIONS: '[{"name":"Local ClickHouse","host":"${CLICKHOUSE_URL}","username":"${CLICKHOUSE_USER}","password":"${CLICKHOUSE_PASSWORD}"}]'
       DEFAULT_SOURCES: |
         [
           {
             "from": {
-              "databaseName": "default",
+              "databaseName": "${ROBOT_AGENT_CLICKHOUSE_DB}",
               "tableName": "logs"
             },
             "kind": "log",
@@ -264,7 +273,7 @@ services:
           },
           {
             "from": {
-              "databaseName": "default",
+              "databaseName": "${ROBOT_AGENT_CLICKHOUSE_DB}",
               "tableName": ""
             },
             "kind": "metric",
