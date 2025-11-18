@@ -21,7 +21,7 @@ const { parseMQTTTopic, decodeJWT, loglevel, getLogger, versionCompare, MqttSync
 const Mongo = require('@transitive-sdk/mongo');
 const ClickHouse = require('@transitive-sdk/clickhouse');
 
-const {  waitForClickHouse } = require('./utils');
+const {  waitForClickHouse, ensureClickHouseOrgUser, setupClickousePermissions } = require('./utils');
 const { COOKIE_NAME, TOKEN_COOKIE } = require('../common.js');
 const docker = require('./docker');
 const installRouter = require('./install');
@@ -475,7 +475,7 @@ class _robotAgent extends Capability {
         '/+orgId/+deviceId/@transitive-robotics/_robot-agent/+/status/runningPackages/+scope/+capName/+version',
         async (value, topic, matched, tags) => {
           if (!value) return;
-
+          const detailedVersion = value;
           // Make sure the docker container for this cap is running
           const {orgId, deviceId, scope, capName, version} = matched;
           if (!this.isRunning(orgId, deviceId)) {
@@ -485,12 +485,12 @@ class _robotAgent extends Capability {
 
           if (!matched.capName.startsWith('_')) {
             const name = `${scope}/${capName}`;
-            const key = `${name}:${version}`;
+            const key = `${name}:${detailedVersion}`;
             if (process.env.NODOCKER) {
               log.info('NODOCKER: not starting docker container for', key);
             } else {
-              log.info('ensureRunning docker container for', key);
-              docker.ensureRunning({name, version});
+              log.info('ensureRunning docker container for', key, name, detailedVersion);
+              docker.ensureRunning({name, version: detailedVersion});
             }
           }
 
@@ -531,7 +531,8 @@ class _robotAgent extends Capability {
       if (process.env.CLICKHOUSE_ENABLED === 'true') {
         log.debug('ClickHouse integration enabled');
         ClickHouse.init();
-        waitForClickHouse().then(() => {
+        waitForClickHouse().then(async () => {
+          await setupClickousePermissions();
           this.telemetry = new TelemetryService();
           this.telemetry.init().then(() => {
             this.ingestLogs();
@@ -1001,6 +1002,10 @@ class _robotAgent extends Capability {
       if (!valid) {
         log.info('wrong password for account', req.body.name);
         return fail('invalid credentials');
+      }
+
+      if (process.env.CLICKHOUSE_ENABLED) {
+        await ensureClickHouseOrgUser(account._id);
       }
 
       login(req, res, {account, redirect: false});

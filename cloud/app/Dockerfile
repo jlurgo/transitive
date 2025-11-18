@@ -2,6 +2,7 @@ FROM node:20.12.2 AS base
 
 RUN mkdir -p /app
 COPY package*.json /app/
+# COPY deps/ /app/deps/
 WORKDIR /app
 RUN npm ci
 

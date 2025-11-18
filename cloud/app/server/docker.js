@@ -155,25 +155,42 @@ const build = async ({name, version, pkgInfo}) => {
 
   /* build the image */
   log.debug('building the image');
-  const stream = await docker.buildImage({
-      context: dir,
-      src: ['Dockerfile', 'certs',
-        'package.json', '.npmrc', '.dockerignore', 'cloud_runner.js']
-    }, {
-      networkmode: 'cloud_caps',
-      // extrahosts: `registry:${REGISTRY_HOST}`,
-      t: tagName
-    });
-  stream.on('data', chunk =>
-    log.debug(JSON.parse(chunk.toString()).stream?.trim()));
-  await new Promise((resolve, reject) => {
-    docker.modem.followProgress(stream,
-      (err, res) => {
-        log.debug('result from building image', err, res);
-        return err ? reject(err) : resolve(res);
+  log.debug(`Using registry host: ${REGISTRY_HOST}`);
+  log.debug(`Using capability registry: ${trRegistry}`);
+  log.debug(`Using capability package: ${name}@${version}`);
+  log.debug(`Using certs folder: ${certsFolder}`);
+  log.debug(`Using common folder: /persistent/common`);
+  log.debug(`Using self folder: /persistent/self`);
+  log.debug(`Using external IP: ${externalIp.address}`);
+  log.debug(`Using TR_HOST: ${process.env.TR_HOST}`);
+  log.debug('Starting docker build...');
+  log.debug(`Dockerfile:\n${fs.readFileSync(path.join(dir, 'Dockerfile'), 'utf-8')}`);
+  log.debug(`Dockerfile dir: ${dir}`);
+
+  try {
+    const stream = await docker.buildImage({
+        context: dir,
+        src: ['Dockerfile', 'certs',
+          'package.json', '.npmrc', '.dockerignore', 'cloud_runner.js']
+      }, {
+        networkmode: 'cloud_caps',
+        // extrahosts: `registry:${REGISTRY_HOST}`,
+        t: tagName
       });
-  });
-  log.debug('done building');
+    stream.on('data', chunk =>
+      log.debug(JSON.parse(chunk.toString()).stream?.trim()));
+    await new Promise((resolve, reject) => {
+      docker.modem.followProgress(stream,
+        (err, res) => {
+          log.debug('result from building image', err, res);
+          return err ? reject(err) : resolve(res);
+        });
+    });
+    log.debug('done building');
+  } catch (error) {
+    log.error('error during docker build:', error);
+    // throw error;
+  }
 };
 
 const portsUsedByUs = [];

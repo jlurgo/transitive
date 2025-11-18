@@ -105,6 +105,19 @@ const ensureCapabilityDB = async (capName) => {
     query: `GRANT ALL ON ${dbName}.* TO ${user}`
   });
 
+  // create row level security policy to allow access to all rows
+  await ClickHouse.client.exec({
+    query: `CREATE ROW POLICY IF NOT EXISTS ${user}_policy ON ${dbName}.* USING 1 TO ${user}`
+  });
+  
+  await ClickHouse.client.exec({
+    query: `CREATE ROW POLICY IF NOT EXISTS ${dbName}_customers ON ${dbName}.* USING OrgId = currentUser() TO ALL`
+  });
+
+  await ClickHouse.client.exec({
+    query: `CREATE ROW POLICY IF NOT EXISTS ${dbName}_admin ON ${dbName}.* USING 1 TO ${process.env.CLICKHOUSE_USER}`
+  });
+
   log.debug(`ClickHouse user ${user} for database ${dbName} created`);
 
   return { dbName, user, password };
@@ -123,7 +136,64 @@ const waitForClickHouse = async () => {
       await new Promise(resolve => setTimeout(resolve, 2000));
     }
   }
-  throw new Error('Timeout waiting for ClickHouse to be healthy');
+  throw new Error('Timeout waiting for ClickHouse to be ready');
 };
 
-module.exports = { getNextInRange, getVersionRange, ensureCapabilityDB, waitForClickHouse };
+const setupClickousePermissions = async () => {
+  // CREATE ROW POLICY customers ON *.* USING OrgId = currentUser() TO ALL;
+  // CREATE ROW POLICY admin ON *.* USING 1 TO default;
+
+  await ClickHouse.client.exec({
+    query: `CREATE ROW POLICY IF NOT EXISTS default_customers ON default.* USING OrgId = currentUser() TO ALL`
+  });
+
+  await ClickHouse.client.exec({
+    query: `CREATE ROW POLICY IF NOT EXISTS default_admin ON default.* USING 1 TO ${process.env.CLICKHOUSE_USER}`
+  });
+};
+
+
+/* creates ClickHouse user for an organization with SELECT access for all dbs and tables */
+const ensureClickHouseOrgUser = async (orgId) => {
+  const orgUser = `org_${orgId}_user`;
+  // Check if user exists
+  const userExists = await ClickHouse.client.query({
+    query: `SELECT name FROM system.users WHERE name = '${orgUser}'`,
+    format: 'JSONEachRow'
+  });
+
+  const users = await userExists.json();
+  if (users.length > 0) {
+    log.debug(`ClickHouse user for organization ${orgId} already exists`);
+    return;
+  }
+
+  const orgPassword = getRandomId(15);
+
+  log.debug(`creating ClickHouse user for organization ${orgId} : ${orgUser} / ${orgPassword}`);
+
+  // create user
+  await ClickHouse.client.exec({
+    query: `CREATE USER IF NOT EXISTS ${orgUser} IDENTIFIED WITH plaintext_password BY '${orgPassword}'`
+  });
+
+  // grant read only access to all databases and tables - row level security will limit access to own org data
+  await ClickHouse.client.exec({
+    query: `GRANT SELECT ON *.* TO ${orgUser}`
+  });
+
+  // store user and password in mongo
+  const mongoCredentialsCollection = Mongo.db.collection('clickhouse_users');
+  await mongoCredentialsCollection.updateOne(
+    { user: orgUser, db: 'all' },
+    { $set: { password: orgPassword } },
+    { upsert: true }
+  );
+
+  return {
+    user: orgUser,
+    password: orgPassword
+  };
+}
+
+module.exports = { getNextInRange, getVersionRange, ensureCapabilityDB, waitForClickHouse, setupClickousePermissions, ensureClickHouseOrgUser };
