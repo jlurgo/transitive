@@ -1,7 +1,7 @@
 const semver = require('semver');
 const Mongo = require('@transitive-sdk/mongo');
 const ClickHouse = require('@transitive-sdk/clickhouse');
-const { getLogger, getRandomId } = require('@transitive-sdk/utils');
+const { getLogger, getRandomId, wait } = require('@transitive-sdk/utils');
 
 const log = getLogger('utils');
 
@@ -124,19 +124,20 @@ const ensureCapabilityDB = async (capName) => {
 }
 
 const waitForClickHouse = async () => {
+  log.debug('Waiting for ClickHouse to be ready...');
   const start = Date.now();
   const timeout = 2 * 60 * 1000; // 2 minutes before giving up
   while (Date.now() - start < timeout) {
-    log.debug('Waiting for ClickHouse to be ready...');
     try {
       await ClickHouse.client.query({ query: 'SELECT 1' });
       log.debug('ClickHouse is ready');
       return;
     } catch (err) {
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      log.debug('ClickHouse not ready yet:', err.message);
     }
+    await wait(2000);
   }
-  throw new Error('Timeout waiting for ClickHouse to be ready');
+  throw new Error('Timeout waiting for ClickHouse to be healthy');
 };
 
 const setupClickousePermissions = async () => {

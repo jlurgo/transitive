@@ -20,7 +20,6 @@ const { parseMQTTTopic, decodeJWT, loglevel, getLogger, versionCompare, MqttSync
   getPackageVersionNamespace, toFlatObject } = require('@transitive-sdk/utils');
 const Mongo = require('@transitive-sdk/mongo');
 const ClickHouse = require('@transitive-sdk/clickhouse');
-
 const {  waitForClickHouse, ensureClickHouseOrgUser, setupClickousePermissions } = require('./utils');
 const { COOKIE_NAME, TOKEN_COOKIE } = require('../common.js');
 const docker = require('./docker');
