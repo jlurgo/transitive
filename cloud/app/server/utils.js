@@ -75,13 +75,13 @@ const ensureCapabilityDB = async (capName) => {
   });
 
   const users = await userExists.json();
-  const mongoCredentialsCollection = Mongo.db.collection('clickhouse_users')
+  const capabilitiesCollection = Mongo.db.collection('capabilities')
   if (users.length > 0) {
     // retrieve password from mongo
-    const userDoc = await mongoCredentialsCollection.findOne({ user: user, db: dbName });
-    if (userDoc) {
-      log.debug(`ClickHouse user ${user} for database ${dbName} already exists`);
-      return { dbName, user, password: userDoc.password }
+    const capabilityDoc = await capabilitiesCollection.findOne({ name: capName });
+    if (capabilityDoc?.clickhouseCredentials) {
+      log.debug(`ClickHouse user ${user} for database ${dbName} exists, retrieved credentials from mongo`);
+      return capabilityDoc.clickhouseCredentials;
     }
   }
 
@@ -89,9 +89,9 @@ const ensureCapabilityDB = async (capName) => {
   const password = getRandomId(15);
 
   // store user and password in mongo
-  await mongoCredentialsCollection.updateOne(
-    { user: user, db: dbName },
-    { $set: { password: password } },
+  await capabilitiesCollection.updateOne(
+    { name: capName },
+    { $set: { clickhouseCredentials: { dbName, user, password } } },
     { upsert: true }
   );
 
