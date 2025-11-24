@@ -137,14 +137,10 @@ const waitForClickHouse = async () => {
     }
     await wait(2000);
   }
-  throw new Error('Timeout waiting for ClickHouse to be healthy');
+  throw new Error('Timeout waiting for ClickHouse to be ready');
 };
 
-
 const setupClickousePermissions = async () => {
-  // CREATE ROW POLICY customers ON *.* USING OrgId = currentUser() TO ALL;
-  // CREATE ROW POLICY admin ON *.* USING 1 TO default;
-
   await ClickHouse.client.exec({
     query: `CREATE ROW POLICY IF NOT EXISTS default_customers ON default.* USING OrgId = currentUser() TO ALL`
   });
@@ -163,11 +159,16 @@ const ensureClickHouseOrgUser = async (orgId) => {
     query: `SELECT name FROM system.users WHERE name = '${orgUser}'`,
     format: 'JSONEachRow'
   });
-
+  const accountsCollection = Mongo.db.collection('accounts');
   const users = await userExists.json();
   if (users.length > 0) {
     log.debug(`ClickHouse user for organization ${orgId} already exists`);
-    return;
+    const password = await accountsCollection.findOne({ _id: orgId })?.clickhouseCredentials?.password;
+    log.debug(`retrieved ClickHouse credentials for organization ${orgId} from mongo: ${orgUser} / ${password}`);
+    return { 
+      user: orgUser,
+      password: password
+    };
   }
 
   const orgPassword = getRandomId(15);
@@ -185,11 +186,9 @@ const ensureClickHouseOrgUser = async (orgId) => {
   });
 
   // store user and password in mongo
-  const mongoCredentialsCollection = Mongo.db.collection('clickhouse_users');
-  await mongoCredentialsCollection.updateOne(
-    { user: orgUser, db: 'all' },
-    { $set: { password: orgPassword } },
-    { upsert: true }
+  await accountsCollection.updateOne(
+    { _id: orgId },
+    { $set: { clickhouseCredentials: { user: orgUser, password: orgPassword } } }
   );
 
   return {
