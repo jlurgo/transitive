@@ -140,6 +140,7 @@ const waitForClickHouse = async () => {
   throw new Error('Timeout waiting for ClickHouse to be healthy');
 };
 
+
 const setupClickousePermissions = async () => {
   // CREATE ROW POLICY customers ON *.* USING OrgId = currentUser() TO ALL;
   // CREATE ROW POLICY admin ON *.* USING 1 TO default;
