@@ -7,6 +7,7 @@ const Docker = require('dockerode');
 const fetch = require('node-fetch');
 const _ = require('lodash');
 const semver = require('semver');
+const tar = require('tar-fs');
 const { getLogger, tryJSONParse } = require('@transitive-sdk/utils');
 
 const { getNextInRange, ensureCapabilityDB } = require('./utils');
@@ -168,11 +169,8 @@ const build = async ({name, version, pkgInfo}) => {
   log.debug(`Dockerfile dir: ${dir}`);
 
   try {
-    const stream = await docker.buildImage({
-        context: dir,
-        src: ['Dockerfile', 'certs',
-          'package.json', '.npmrc', '.dockerignore', 'cloud_runner.js']
-      }, {
+    const tarStream = tar.pack(dir);
+    const stream = await docker.buildImage(tarStream, {
         networkmode: 'cloud_caps',
         // extrahosts: `registry:${REGISTRY_HOST}`,
         t: tagName
@@ -203,12 +201,16 @@ const start = async ({name, version, pkgInfo}) => {
   const exists = list.some(image =>
     image.RepoTags && image.RepoTags.includes(tagName));
 
-  if (!exists) {
-    await build({name, version, pkgInfo});
-  } else {
-    log.debug('image exists');
-  }
+  try {
+    if (!exists) {
+      await build({name, version, pkgInfo});
+    } else {
+      log.debug('image exists');
+    }
 
+  } catch (error) {
+    log.error('failed to build image:', error);
+  }
   const ports = pkgInfo.versions[version]?.transitiverobotics?.ports || 1;
   ports > 100 && log.warn(`${name}:${version} is requesting ${ports} ports!`);
 
@@ -252,19 +254,20 @@ const start = async ({name, version, pkgInfo}) => {
       ExposedPorts[`${port}/udp`] = {};
     }
   }
-  const clickhouseEnvVars = [];
+  let clickhouseEnvVars = [];
   if (process.env.CLICKHOUSE_ENABLED === 'true') {   
-    ensureCapabilityDB(name).then(({dbName, user, password}) => {
+    try {
+      const {dbName, user, password} = await ensureCapabilityDB(name);
       log.debug('ClickHouse user for cap:', user);
-      clickhouseEnvVars.push(
+      clickhouseEnvVars = [
         `CLICKHOUSE_URL=${process.env.CLICKHOUSE_URL}`,
         `CLICKHOUSE_DB=${dbName}`,
         `CLICKHOUSE_USER=${user}`,
         `CLICKHOUSE_PASSWORD=${password}`
-      );
-    }).catch((error) => {
+      ];
+    } catch (error) {
       log.error('Failed to setup ClickHouse DB for cap:', error);
-    });
+    }
   } else {
     log.debug('ClickHouse integration not enabled for cap');
   }

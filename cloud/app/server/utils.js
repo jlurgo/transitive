@@ -111,7 +111,7 @@ const ensureCapabilityDB = async (capName) => {
   });
   
   await ClickHouse.client.exec({
-    query: `CREATE ROW POLICY IF NOT EXISTS ${dbName}_customers ON ${dbName}.* USING OrgId = currentUser() TO ALL`
+    query: `CREATE ROW POLICY IF NOT EXISTS ${dbName}_customers ON ${dbName}.* USING concat('org_', OrgId, '_user') = currentUser() TO ALL`
   });
 
   await ClickHouse.client.exec({
@@ -142,7 +142,7 @@ const waitForClickHouse = async () => {
 
 const setupClickousePermissions = async () => {
   await ClickHouse.client.exec({
-    query: `CREATE ROW POLICY IF NOT EXISTS default_customers ON default.* USING OrgId = currentUser() TO ALL`
+    query: `CREATE ROW POLICY IF NOT EXISTS default_customers ON default.* USING concat('org_', OrgId, '_user') = currentUser() TO ALL`
   });
 
   await ClickHouse.client.exec({
