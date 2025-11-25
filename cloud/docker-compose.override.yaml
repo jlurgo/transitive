@@ -38,6 +38,7 @@ services:
       - ./app/server:/app/server
       - ./app/assets:/app/assets
       - ./app/public:/app/public
+      # - ./app/deps:/app/deps
 
   proxy:
     build: ./proxy
