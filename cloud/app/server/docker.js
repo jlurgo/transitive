@@ -235,19 +235,20 @@ const start = async ({name, version, pkgInfo}) => {
       ExposedPorts[`${port}/udp`] = {};
     }
   }
-  const clickhouseEnvVars = [];
+  let clickhouseEnvVars = [];
   if (process.env.CLICKHOUSE_ENABLED === 'true') {   
-    ensureCapabilityDB(name).then(({dbName, user, password}) => {
+    try {
+      const {dbName, user, password} = await ensureCapabilityDB(name);
       log.debug('ClickHouse user for cap:', user);
-      clickhouseEnvVars.push(
+      clickhouseEnvVars = [
         `CLICKHOUSE_URL=${process.env.CLICKHOUSE_URL}`,
         `CLICKHOUSE_DB=${dbName}`,
         `CLICKHOUSE_USER=${user}`,
         `CLICKHOUSE_PASSWORD=${password}`
-      );
-    }).catch((error) => {
+      ];
+    } catch (error) {
       log.error('Failed to setup ClickHouse DB for cap:', error);
-    });
+    }
   } else {
     log.debug('ClickHouse integration not enabled for cap');
   }
